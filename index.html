@@ -13,7 +13,10 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body>
-  <div id="root"></div>
+  <div id="root" class="min-h-screen flex items-center justify-center text-lg" style="color:#d52929;background:linear-gradient(135deg,#fff6f6 0%,#ffd3d3 100%);">Loading dashboard...</div>
+  <noscript>
+    <div style="padding:16px;color:#d52929;background:#fff6f6;">This page requires JavaScript to run.</div>
+  </noscript>
   <script type="text/babel" data-presets="react">
 const { useState, useEffect } = React;
 const { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, ComposedChart, ScatterChart, Scatter, ZAxis } = Recharts;
@@ -1252,7 +1255,18 @@ function PMMSurveyDashboard() {
     </div>
   );
 }
-ReactDOM.createRoot(document.getElementById('root')).render(<PMMSurveyDashboard />);
+try {
+  if (!window.Recharts) {
+    throw new Error("Recharts failed to load");
+  }
+  ReactDOM.createRoot(document.getElementById('root')).render(<PMMSurveyDashboard />);
+} catch (err) {
+  const root = document.getElementById('root');
+  if (root) {
+    root.innerHTML = '<div style="padding:16px;max-width:720px;text-align:center;">Unable to load dashboard. Please refresh. Error: ' + String(err && err.message ? err.message : err) + '</div>';
+  }
+  console.error(err);
+}
   </script>
 </body>
 </html>
