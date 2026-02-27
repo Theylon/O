@@ -32,12 +32,61 @@ const PMM_COLORS = {
 const CHART_COLORS = [
   '#ff5353', '#f68f6d', '#d52929', '#ff7b7b', '#ff9999', '#ffa07a', '#ff6b6b', '#e85d5d'
 ];
+const BUNDLED_CSV_PATH = './data.csv';
 
 function PMMSurveyDashboard() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [fileUploaded, setFileUploaded] = useState(false);
+
+  const parseCsvText = (text, emptyDataMessage = 'No data found in CSV file') => {
+    Papa.parse(text, {
+      header: true,
+      skipEmptyLines: true,
+      dynamicTyping: false,
+      complete: (results) => {
+        if (results.data.length > 0) {
+          setData(results.data);
+          setFileUploaded(true);
+          setError(null);
+        } else {
+          setError(emptyDataMessage);
+        }
+        setLoading(false);
+      },
+      error: (err) => {
+        setError('Error parsing CSV: ' + err.message);
+        setLoading(false);
+      }
+    });
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    setLoading(true);
+
+    fetch(BUNDLED_CSV_PATH, { cache: 'no-store' })
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error('HTTP ' + response.status);
+        }
+        return response.text();
+      })
+      .then((text) => {
+        if (!isMounted) return;
+        parseCsvText(text, 'No data found in bundled CSV file');
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setError('Bundled CSV could not be loaded. Upload a CSV file to continue.');
+        setLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const handleFileUpload = (event) => {
     const file = event.target.files[0];
@@ -48,25 +97,7 @@ function PMMSurveyDashboard() {
    
     reader.onload = (e) => {
       const text = e.target.result;
-      Papa.parse(text, {
-        header: true,
-        skipEmptyLines: true,
-        dynamicTyping: false,
-        complete: (results) => {
-          if (results.data.length > 0) {
-            setData(results.data);
-            setFileUploaded(true);
-            setLoading(false);
-          } else {
-            setError('No data found in CSV file');
-            setLoading(false);
-          }
-        },
-        error: (err) => {
-          setError('Error parsing CSV: ' + err.message);
-          setLoading(false);
-        }
-      });
+      parseCsvText(text);
     };
    
     reader.onerror = () => {
