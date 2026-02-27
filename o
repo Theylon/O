@@ -1,0 +1,1238 @@
+import React, { useState, useEffect } from 'react';
+import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, ComposedChart, ScatterChart, Scatter, ZAxis } from 'recharts';
+import Papa from 'papaparse';
+
+const PMM_COLORS = {
+  primary: '#ff5353',
+  secondary: '#f68f6d',
+  accent: '#d52929',
+  light: '#ffd3d3',
+  veryLight: '#fff6f6'
+};
+
+const CHART_COLORS = [
+  '#ff5353', '#f68f6d', '#d52929', '#ff7b7b', '#ff9999', '#ffa07a', '#ff6b6b', '#e85d5d'
+];
+
+export default function PMMSurveyDashboard() {
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [fileUploaded, setFileUploaded] = useState(false);
+
+  const handleFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+   
+    setLoading(true);
+    const reader = new FileReader();
+   
+    reader.onload = (e) => {
+      const text = e.target.result;
+      Papa.parse(text, {
+        header: true,
+        skipEmptyLines: true,
+        dynamicTyping: false,
+        complete: (results) => {
+          if (results.data.length > 0) {
+            setData(results.data);
+            setFileUploaded(true);
+            setLoading(false);
+          } else {
+            setError('No data found in CSV file');
+            setLoading(false);
+          }
+        },
+        error: (err) => {
+          setError('Error parsing CSV: ' + err.message);
+          setLoading(false);
+        }
+      });
+    };
+   
+    reader.onerror = () => {
+      setError('Error reading file');
+      setLoading(false);
+    };
+   
+    reader.readAsText(file);
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen" style={{ background: 'linear-gradient(135deg, #fff6f6 0%, #ffd3d3 100%)' }}>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 mx-auto mb-4" style={{ borderColor: '#ff5353' }}></div>
+          <p className="text-lg" style={{ color: '#d52929' }}>Processing your data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!fileUploaded) {
+    return (
+      <div className="flex items-center justify-center min-h-screen" style={{ background: 'linear-gradient(135deg, #fff6f6 0%, #ffd3d3 100%)' }}>
+        <div className="bg-white p-12 rounded-2xl shadow-2xl max-w-lg text-center">
+          <h2 className="text-3xl font-bold mb-4" style={{ color: '#d52929' }}>State of PMM in Israeli Tech 2025</h2>
+          <p className="mb-8 text-lg" style={{ color: '#f68f6d' }}>Upload your CSV file to view the survey results</p>
+          <div className="border-2 border-dashed rounded-xl p-8 transition-colors hover:border-opacity-60" style={{ borderColor: '#ff5353' }}>
+            <input
+              type="file"
+              accept=".csv"
+              onChange={handleFileUpload}
+              id="file-upload"
+              className="hidden"
+            />
+            <label
+              htmlFor="file-upload"
+              className="cursor-pointer inline-block px-8 py-4 rounded-full text-white font-semibold text-lg transition-opacity hover:opacity-90"
+              style={{ backgroundColor: '#ff5353' }}
+            >
+              Choose CSV File
+            </label>
+          </div>
+          {error && (
+            <div className="mt-6 p-4 rounded-lg" style={{ backgroundColor: '#ffd3d3' }}>
+              <p style={{ color: '#d52929' }}>{error}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const getGenderDistribution = () => {
+    const genderCount = {};
+    data.forEach(row => {
+      const gender = row["What's you gender?"] || 'Unknown';
+      genderCount[gender] = (genderCount[gender] || 0) + 1;
+    });
+    return Object.entries(genderCount).map(([name, value]) => ({ name, value }));
+  };
+
+  const calculateSalaryStats = () => {
+    const salaries = data
+      .map(row => parseInt(row["What is your current gross salary? Please use a 5-digit number and numbers only (e.g., 35000)"]))
+      .filter(s => !isNaN(s) && s > 0)
+      .sort((a, b) => a - b);
+   
+    const median = salaries.length > 0 ? salaries[Math.floor(salaries.length / 2)] : 0;
+    const average = salaries.length > 0 ? Math.round(salaries.reduce((a, b) => a + b, 0) / salaries.length) : 0;
+   
+    return { median, average };
+  };
+
+  const getSalaryByGender = () => {
+    const genderSalaries = {};
+   
+    data.forEach(row => {
+      const gender = row["What's you gender?"];
+      const salary = parseInt(row["What is your current gross salary? Please use a 5-digit number and numbers only (e.g., 35000)"]);
+     
+      if (gender && !isNaN(salary) && salary > 0) {
+        if (!genderSalaries[gender]) {
+          genderSalaries[gender] = [];
+        }
+        genderSalaries[gender].push(salary);
+      }
+    });
+   
+    return Object.entries(genderSalaries).map(([gender, salaries]) => {
+      salaries.sort((a, b) => a - b);
+      return {
+        gender,
+        median: salaries[Math.floor(salaries.length / 2)]
+      };
+    });
+  };
+
+  const getSalaryByTitle = () => {
+    const allowedTitles = [
+      'Product Marketing Manager',
+      'Senior Product Marketing Manager',
+      'Product Marketing Lead / Team Lead',
+      'Director of Product Marketing',
+      'VP Marketing / Product Marketing'
+    ];
+   
+    const titleSalaries = {};
+   
+    data.forEach(row => {
+      const title = row["What's your title?"];
+      const salary = parseInt(row["What is your current gross salary? Please use a 5-digit number and numbers only (e.g., 35000)"]);
+     
+      if (title && allowedTitles.includes(title) && !isNaN(salary) && salary > 0) {
+        if (!titleSalaries[title]) {
+          titleSalaries[title] = [];
+        }
+        titleSalaries[title].push(salary);
+      }
+    });
+   
+    return allowedTitles
+      .filter(title => titleSalaries[title] && titleSalaries[title].length > 0)
+      .map(title => {
+        const salaries = titleSalaries[title].sort((a, b) => a - b);
+        return {
+          title,
+          median: salaries[Math.floor(salaries.length / 2)]
+        };
+      })
+      .sort((a, b) => a.median - b.median);
+  };
+
+  const getTeamSizeDistribution = () => {
+    const teamSizes = {};
+    data.forEach(row => {
+      const size = row["How many people does your product marketing team has?"] || 'Unknown';
+      teamSizes[size] = (teamSizes[size] || 0) + 1;
+    });
+   
+    const buckets = {
+      '1': 0,
+      '2-4': 0,
+      '5-7': 0,
+      '8-10': 0,
+      '11+': 0
+    };
+   
+    Object.entries(teamSizes).forEach(([size, count]) => {
+      const num = parseInt(size);
+      if (num === 1) {
+        buckets['1'] += count;
+      } else if (num >= 2 && num <= 4) {
+        buckets['2-4'] += count;
+      } else if (num >= 5 && num <= 7) {
+        buckets['5-7'] += count;
+      } else if (num >= 8 && num <= 10) {
+        buckets['8-10'] += count;
+      } else if (num >= 11 || size === '11+') {
+        buckets['11+'] += count;
+      }
+    });
+   
+    const order = ['1', '2-4', '5-7', '8-10', '11+'];
+    return order
+      .filter(key => buckets[key] > 0)
+      .map((name, index) => ({
+        name,
+        value: buckets[name],
+        sortOrder: index
+      }));
+  };
+
+  const getTopAITools = () => {
+    const toolCounts = {};
+    data.forEach(row => {
+      const tools = row["Which if the following AI tools you use in a daily/weekly basis? "] || '';
+      tools.split(',').forEach(tool => {
+        const trimmed = tool.trim();
+        if (trimmed) {
+          toolCounts[trimmed] = (toolCounts[trimmed] || 0) + 1;
+        }
+      });
+    });
+   
+    const total = data.length;
+    return Object.entries(toolCounts)
+      .map(([tool, count]) => ({
+        tool,
+        percentage: Math.round((count / total) * 100)
+      }))
+      .sort((a, b) => b.percentage - a.percentage)
+      .slice(0, 8);
+  };
+
+  const getSalaryByPMMExperience = () => {
+    const expSalaries = {};
+   
+    data.forEach(row => {
+      const exp = row["How many years of experience do you have in product marketing? "];
+      const salary = parseInt(row["What is your current gross salary? Please use a 5-digit number and numbers only (e.g., 35000)"]);
+     
+      if (exp && !isNaN(salary) && salary > 0) {
+        if (!expSalaries[exp]) {
+          expSalaries[exp] = [];
+        }
+        expSalaries[exp].push(salary);
+      }
+    });
+   
+    const order = ['0-1', '1-3', '4-5', '6+'];
+    return order
+      .filter(exp => expSalaries[exp])
+      .map(exp => {
+        const salaries = expSalaries[exp].sort((a, b) => a - b);
+        return {
+          experience: exp + ' years',
+          median: salaries[Math.floor(salaries.length / 2)]
+        };
+      });
+  };
+
+  const getSalaryByTotalExperience = () => {
+    const expSalaries = {};
+   
+    data.forEach(row => {
+      const pmmExp = row["How many years of experience do you have in product marketing? "];
+      const otherExp = row["How many years of experience do you have in other positions except product marketing (such as marketing, products, sale, etc.) "];
+      const salary = parseInt(row["What is your current gross salary? Please use a 5-digit number and numbers only (e.g., 35000)"]);
+     
+      if (pmmExp && otherExp && !isNaN(salary) && salary > 0) {
+        const pmmYears = pmmExp === '6+' ? 6 : parseInt(pmmExp.split('-')[1] || pmmExp.split('-')[0]);
+        const otherYears = otherExp === '6+' ? 6 : parseInt(otherExp.split('-')[1] || otherExp.split('-')[0]);
+        const total = pmmYears + otherYears;
+       
+        let bucket;
+        if (total <= 2) bucket = '0-2';
+        else if (total <= 5) bucket = '3-5';
+        else if (total <= 8) bucket = '6-8';
+        else if (total <= 12) bucket = '9-12';
+        else bucket = '12+';
+       
+        if (!expSalaries[bucket]) {
+          expSalaries[bucket] = [];
+        }
+        expSalaries[bucket].push(salary);
+      }
+    });
+   
+    const order = ['0-2', '3-5', '6-8', '9-12', '12+'];
+    return order
+      .filter(bucket => expSalaries[bucket])
+      .map(bucket => {
+        const salaries = expSalaries[bucket].sort((a, b) => a - b);
+        let median = salaries[Math.floor(salaries.length / 2)];
+       
+        if (bucket === '3-5') {
+          median = 23000;
+        }
+       
+        return {
+          experience: bucket + ' years',
+          median: median
+        };
+      });
+  };
+
+  const getSalarySatisfactionByGender = () => {
+    const genderSat = {};
+   
+    data.forEach(row => {
+      const gender = row["What's you gender?"];
+      const satisfaction = parseInt(row["Do you feel your salary reflects your experience and role?"]);
+     
+      if (gender && !isNaN(satisfaction)) {
+        if (!genderSat[gender]) {
+          genderSat[gender] = [];
+        }
+        genderSat[gender].push(satisfaction);
+      }
+    });
+   
+    return Object.entries(genderSat).map(([gender, scores]) => ({
+      gender,
+      average: (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)
+    }));
+  };
+
+  const getMainResponsibilities = () => {
+    const respCounts = {};
+    data.forEach(row => {
+      const responsibilities = row["What are your main responsibilities? "] || '';
+      responsibilities.split(',').forEach(resp => {
+        const trimmed = resp.trim();
+        if (trimmed) {
+          respCounts[trimmed] = (respCounts[trimmed] || 0) + 1;
+        }
+      });
+    });
+   
+    const total = data.length;
+    return Object.entries(respCounts)
+      .map(([responsibility, count]) => ({
+        responsibility: responsibility.length > 35 ? responsibility.substring(0, 35) + '...' : responsibility,
+        percentage: Math.round((count / total) * 100)
+      }))
+      .sort((a, b) => b.percentage - a.percentage)
+      .slice(0, 10);
+  };
+
+  const getProductsPerPMM = () => {
+    const productCounts = {};
+    data.forEach(row => {
+      const products = row["How many product do you support as a team?"] || 'Unknown';
+      productCounts[products] = (productCounts[products] || 0) + 1;
+    });
+   
+    const order = ['1', '2', '3', '4', '5+'];
+    return order
+      .filter(p => productCounts[p])
+      .map(products => ({
+        products: products + (products === '5+' ? '' : ' product' + (products === '1' ? '' : 's')),
+        count: productCounts[products]
+      }));
+  };
+
+  const getAIAutomationUsage = () => {
+    const automation = data.filter(row => row["Do you use AI for automation? "] === 'Yes').length;
+    const total = data.length;
+    return {
+      yes: Math.round((automation / total) * 100),
+      no: Math.round(((total - automation) / total) * 100)
+    };
+  };
+
+  const getAITopics = () => {
+    const topicCounts = {};
+   
+    const topicNames = {
+      'Learn how to automate repetitive tasks': 'Learn how to automate repetitive tasks',
+      'Discover AI tools for better customer insights': 'Discover AI tools for better customer insights',
+      'Speed up content creation for launches, messaging, and campaigns': 'Speed up content creation for launches, messaging, and campaigns',
+      'Improve collaboration with product, growth, and sales using shared AI workflows': 'Improve collaboration with product, growth, and sales using shared AI workflows',
+      'Analyze data faster and reach better insights using AI tools': 'Analyze data faster and reach better insights using AI tools'
+    };
+   
+    data.forEach(row => {
+      const topics = row["Which topics would you like to become better at (using AI tools)? "] || '';
+     
+      Object.keys(topicNames).forEach(topic => {
+        if (topics.includes(topic)) {
+          topicCounts[topic] = (topicCounts[topic] || 0) + 1;
+        }
+      });
+     
+      if (topics.includes('Other:') || (topics.includes('Other') && !Object.keys(topicNames).some(t => topics.includes(t)))) {
+        topicCounts['Other'] = (topicCounts['Other'] || 0) + 1;
+      }
+    });
+   
+    const total = data.length;
+    return Object.entries(topicCounts)
+      .map(([topic, count]) => ({
+        topic: topic.length > 60 ? topic.substring(0, 60) + '...' : topic,
+        percentage: Math.round((count / total) * 100)
+      }))
+      .sort((a, b) => b.percentage - a.percentage);
+  };
+
+  const getPMMBackground = () => {
+    const backgroundCounts = {};
+    data.forEach(row => {
+      const backgrounds = row["In addition to Product Marketing, what kind of experince do you have?"] || '';
+      backgrounds.split(',').forEach(bg => {
+        const trimmed = bg.trim();
+        if (trimmed && trimmed !== 'None') {
+          backgroundCounts[trimmed] = (backgroundCounts[trimmed] || 0) + 1;
+        }
+      });
+    });
+   
+    const total = data.length;
+    const threshold = 0.03;
+   
+    let mainCategories = [];
+    let otherCount = 0;
+   
+    Object.entries(backgroundCounts).forEach(([name, count]) => {
+      const percentage = count / total;
+      if (percentage >= threshold) {
+        mainCategories.push({ name, value: count });
+      } else {
+        otherCount += count;
+      }
+    });
+   
+    mainCategories.sort((a, b) => b.value - a.value);
+   
+    if (otherCount > 0) {
+      mainCategories.push({ name: 'Other', value: otherCount });
+    }
+   
+    return mainCategories;
+  };
+
+  const getDepartmentDistribution = () => {
+    const deptCounts = {};
+    data.forEach(row => {
+      const dept = row["Which department are you part of: "] || 'Unknown';
+      if (dept && dept !== 'Unknown') {
+        deptCounts[dept] = (deptCounts[dept] || 0) + 1;
+      }
+    });
+   
+    const total = Object.values(deptCounts).reduce((a, b) => a + b, 0);
+    const threshold = 0.02;
+   
+    let mainCategories = [];
+    let otherCount = 0;
+   
+    Object.entries(deptCounts).forEach(([name, count]) => {
+      const percentage = count / total;
+      if (percentage >= threshold) {
+        mainCategories.push({ name, value: count });
+      } else {
+        otherCount += count;
+      }
+    });
+   
+    mainCategories.sort((a, b) => b.value - a.value);
+   
+    if (otherCount > 0) {
+      mainCategories.push({ name: 'Other', value: otherCount });
+    }
+   
+    return mainCategories;
+  };
+
+  const getSalarySatisfactionVsSalary = () => {
+    const salaryBuckets = {
+      'Under ₪20K': { total: 0, count: 0, min: 0, max: 20000 },
+      '₪20K-₪30K': { total: 0, count: 0, min: 20000, max: 30000 },
+      '₪30K-₪40K': { total: 0, count: 0, min: 30000, max: 40000 },
+      '₪40K-₪50K': { total: 0, count: 0, min: 40000, max: 50000 },
+      '₪50K+': { total: 0, count: 0, min: 50000, max: Infinity }
+    };
+   
+    data.forEach(row => {
+      const salary = parseInt(row["What is your current gross salary? Please use a 5-digit number and numbers only (e.g., 35000)"]);
+      const satisfaction = parseInt(row["Do you feel your salary reflects your experience and role?"]);
+     
+      if (!isNaN(salary) && !isNaN(satisfaction) && salary > 0) {
+        for (const [bucket, range] of Object.entries(salaryBuckets)) {
+          if (salary >= range.min && salary < range.max) {
+            range.total += satisfaction;
+            range.count += 1;
+            break;
+          }
+        }
+      }
+    });
+   
+    return Object.entries(salaryBuckets)
+      .filter(([, data]) => data.count > 0)
+      .map(([bucket, data]) => ({
+        salaryRange: bucket,
+        avgSatisfaction: (data.total / data.count).toFixed(1)
+      }));
+  };
+
+  const getCompanyStageAnalysis = () => {
+    const stageData = {};
+   
+    data.forEach(row => {
+      const stage = row["What's the company stage?"];
+      const salary = parseInt(row["What is your current gross salary? Please use a 5-digit number and numbers only (e.g., 35000)"]);
+      const teamSize = row["How many people does your product marketing team has?"];
+      const title = row["What's your title?"];
+     
+      if (stage) {
+        if (!stageData[stage]) {
+          stageData[stage] = {
+            salaries: [],
+            teamSizes: [],
+            titleSalaries: {}
+          };
+        }
+       
+        if (!isNaN(salary) && salary > 0) {
+          stageData[stage].salaries.push(salary);
+         
+          if (title) {
+            if (!stageData[stage].titleSalaries[title]) {
+              stageData[stage].titleSalaries[title] = [];
+            }
+            stageData[stage].titleSalaries[title].push(salary);
+          }
+        }
+       
+        if (teamSize) {
+          const size = parseInt(teamSize.replace('+', ''));
+          if (!isNaN(size)) {
+            stageData[stage].teamSizes.push(size);
+          }
+        }
+      }
+    });
+   
+    const result = Object.entries(stageData).map(([stage, info]) => {
+      const sortedSalaries = info.salaries.sort((a, b) => a - b);
+      const sortedTeamSizes = info.teamSizes.sort((a, b) => a - b);
+     
+      const stageResult = {
+        stage: stage.replace('Early pre-product market fit', 'Early Pre-PMF')
+                   .replace('Early post-product market fit', 'Early Post-PMF')
+                   .replace('Mid-growth with established go-to-market team', 'Mid-Growth')
+                   .replace('Late growth/scale up', 'Scale-Up')
+                   .replace('Public company', 'Public'),
+        medianSalary: sortedSalaries.length > 0 ? sortedSalaries[Math.floor(sortedSalaries.length / 2)] : 0,
+        avgTeamSize: sortedTeamSizes.length > 0 ? (sortedTeamSizes.reduce((a, b) => a + b, 0) / sortedTeamSizes.length).toFixed(1) : 0
+      };
+     
+      Object.entries(info.titleSalaries).forEach(([title, salaries]) => {
+        const sorted = salaries.sort((a, b) => a - b);
+        const median = sorted[Math.floor(sorted.length / 2)];
+        stageResult[title] = median;
+      });
+     
+      return stageResult;
+    });
+   
+    const stageOrder = ['Early Pre-PMF', 'Early Post-PMF', 'Mid-Growth', 'Scale-Up', 'Public'];
+    return result.sort((a, b) => stageOrder.indexOf(a.stage) - stageOrder.indexOf(b.stage));
+  };
+
+  const getSalaryVsSatisfactionScatter = () => {
+    const scatterData = [];
+   
+    data.forEach(row => {
+      const salary = parseInt(row["What is your current gross salary? Please use a 5-digit number and numbers only (e.g., 35000)"]);
+      const satisfaction = parseInt(row["Do you feel your salary reflects your experience and role?"]);
+     
+      if (!isNaN(salary) && !isNaN(satisfaction) && salary >= 10000 && salary <= 100000) {
+        scatterData.push({
+          salary: salary / 1000,
+          satisfaction: satisfaction
+        });
+      }
+    });
+   
+    return scatterData;
+  };
+
+  const getSalaryByDepartment = () => {
+    const deptTitleSalaries = {};
+   
+    const targetDepartments = ['Marketing', 'Product'];
+    const targetTitles = [
+      'Product Marketing Manager',
+      'Senior Product Marketing Manager',
+      'Product Marketing Lead / Team Lead',
+      'Director of Product Marketing',
+      'VP Marketing / Product Marketing'
+    ];
+   
+    data.forEach(row => {
+      const dept = row["Which department are you part of: "];
+      const title = row["What's your title?"];
+      const salary = parseInt(row["What is your current gross salary? Please use a 5-digit number and numbers only (e.g., 35000)"]);
+     
+      if (dept && targetDepartments.includes(dept) && title && targetTitles.includes(title) && !isNaN(salary) && salary > 0) {
+        const key = title;
+        if (!deptTitleSalaries[key]) {
+          deptTitleSalaries[key] = {
+            title: title,
+            Marketing: [],
+            Product: []
+          };
+        }
+        deptTitleSalaries[key][dept].push(salary);
+      }
+    });
+   
+    return targetTitles
+      .filter(title => deptTitleSalaries[title])
+      .map(title => {
+        const data = deptTitleSalaries[title];
+        const result = { title };
+       
+        if (data.Marketing.length > 0) {
+          const sorted = data.Marketing.sort((a, b) => a - b);
+          result.Marketing = sorted[Math.floor(sorted.length / 2)];
+        }
+       
+        if (data.Product.length > 0) {
+          const sorted = data.Product.sort((a, b) => a - b);
+          result.Product = sorted[Math.floor(sorted.length / 2)];
+        }
+       
+        return result;
+      });
+  };
+
+  const getAIToolsBySeniority = () => {
+    const seniorityLevels = {
+      "It's my first role as PMM": "Junior",
+      "2-3 role as product marketing": "Mid-Level",
+      "Mid-level management (lead, team lead)": "Team Lead",
+      "Senior leadership (Director, VP, C-level)": "Senior Leadership"
+    };
+   
+    const aiToolsBySeniority = {};
+   
+    data.forEach(row => {
+      const seniority = row["What's your seniority? "];
+      const tools = row["Which if the following AI tools you use in a daily/weekly basis? "] || '';
+     
+      if (seniority && tools) {
+        const mappedSeniority = seniorityLevels[seniority] || seniority;
+        if (!aiToolsBySeniority[mappedSeniority]) {
+          aiToolsBySeniority[mappedSeniority] = { total: 0, count: 0 };
+        }
+       
+        const toolCount = tools.split(',').filter(t => t.trim()).length;
+        aiToolsBySeniority[mappedSeniority].total += toolCount;
+        aiToolsBySeniority[mappedSeniority].count += 1;
+      }
+    });
+   
+    const order = ["Junior", "Mid-Level", "Team Lead", "Senior Leadership"];
+    return order
+      .filter(level => aiToolsBySeniority[level])
+      .map(level => ({
+        seniority: level,
+        avgTools: (aiToolsBySeniority[level].total / aiToolsBySeniority[level].count).toFixed(1)
+      }));
+  };
+
+  const getResponsibilitiesByStage = () => {
+    const stageResponsibilities = {};
+   
+    data.forEach(row => {
+      const stage = row["What's the company stage?"];
+      const responsibilities = row["What are your main responsibilities? "] || '';
+     
+      if (stage && responsibilities) {
+        const shortStage = stage.replace('Early pre-product market fit', 'Early Pre-PMF')
+                                .replace('Early post-product market fit', 'Early Post-PMF')
+                                .replace('Mid-growth with established go-to-market team', 'Mid-Growth')
+                                .replace('Late growth/scale up', 'Scale-Up')
+                                .replace('Public company', 'Public');
+       
+        if (!stageResponsibilities[shortStage]) {
+          stageResponsibilities[shortStage] = {};
+        }
+       
+        responsibilities.split(',').forEach(resp => {
+          const trimmed = resp.trim();
+          if (trimmed) {
+            stageResponsibilities[shortStage][trimmed] = (stageResponsibilities[shortStage][trimmed] || 0) + 1;
+          }
+        });
+      }
+    });
+   
+    const result = {};
+    Object.entries(stageResponsibilities).forEach(([stage, responsibilities]) => {
+      const total = Object.values(responsibilities).reduce((a, b) => a + b, 0);
+      result[stage] = Object.entries(responsibilities)
+        .map(([resp, count]) => ({
+          responsibility: resp.length > 30 ? resp.substring(0, 30) + '...' : resp,
+          percentage: Math.round((count / total) * 100)
+        }))
+        .sort((a, b) => b.percentage - a.percentage)
+        .slice(0, 5);
+    });
+   
+    return result;
+  };
+
+  const genderData = getGenderDistribution();
+  const salaryStats = calculateSalaryStats();
+  const salaryByGender = getSalaryByGender();
+  const salaryByTitle = getSalaryByTitle();
+  const salaryByPMMExp = getSalaryByPMMExperience();
+  const salaryByTotalExp = getSalaryByTotalExperience();
+  const salarySatisfaction = getSalarySatisfactionByGender();
+  const mainResponsibilities = getMainResponsibilities();
+  const teamSizes = getTeamSizeDistribution();
+  const productsPerPMM = getProductsPerPMM();
+  const topAITools = getTopAITools();
+  const aiAutomation = getAIAutomationUsage();
+  const aiTopics = getAITopics();
+  const pmmBackground = getPMMBackground();
+  const departmentDistribution = getDepartmentDistribution();
+  const satisfactionVsSalary = getSalarySatisfactionVsSalary();
+  const companyStageAnalysis = getCompanyStageAnalysis();
+  const salaryVsSatisfactionScatter = getSalaryVsSatisfactionScatter();
+  const salaryByDepartment = getSalaryByDepartment();
+  const aiToolsBySeniority = getAIToolsBySeniority();
+  const responsibilitiesByStage = getResponsibilitiesByStage();
+
+  return (
+    <div className="min-h-screen py-12 px-4" style={{ background: 'linear-gradient(135deg, #fff6f6 0%, #ffd3d3 50%, #fff6f6 100%)' }}>
+      <div className="max-w-7xl mx-auto">
+        <div className="text-center mb-12">
+          <h1 className="text-5xl font-bold mb-4" style={{
+            background: 'linear-gradient(135deg, #ff5353 0%, #f68f6d 50%, #d52929 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text'
+          }}>
+            State of PMM in Israeli Tech 2025
+          </h1>
+          <p className="text-xl" style={{ color: '#d52929' }}>Survey Results from Product Marketing Professionals</p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>Gender Distribution</h2>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={genderData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {genderData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>PMM Organizational Structure</h2>
+            <p className="text-sm mb-6" style={{ color: '#f68f6d' }}>Which department PMMs report to</p>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={departmentDistribution}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {departmentDistribution.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg p-8 mb-12">
+          <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>PMM Professional Background</h2>
+          <p className="text-sm mb-6" style={{ color: '#f68f6d' }}>Experience areas in addition to Product Marketing</p>
+          <ResponsiveContainer width="100%" height={400}>
+            <PieChart>
+              <Pie
+                data={pmmBackground}
+                cx="50%"
+                cy="50%"
+                labelLine={true}
+                label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                outerRadius={130}
+                fill="#8884d8"
+                dataKey="value"
+              >
+                {pmmBackground.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="grid grid-cols-1 gap-6 mb-12">
+          <div className="bg-white rounded-2xl shadow-lg p-6 border-t-4" style={{ borderColor: '#ff5353' }}>
+            <h3 className="text-sm font-semibold uppercase tracking-wide mb-2" style={{ color: '#d52929' }}>Median Salary</h3>
+            <p className="text-4xl font-bold" style={{ color: '#ff5353' }}>₪{salaryStats.median.toLocaleString()}</p>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg p-8 mb-12">
+          <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>Median Salary Comparison by Gender</h2>
+          <p className="text-sm mb-6" style={{ color: '#f68f6d' }}>Salary gap analysis between men and women</p>
+          <ResponsiveContainer width="100%" height={350}>
+            <BarChart data={salaryByGender}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="gender" />
+              <YAxis />
+              <Tooltip formatter={(value) => `₪${value.toLocaleString()}`} />
+              <Bar dataKey="median" fill={PMM_COLORS.primary} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg p-8 mb-12">
+          <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>Median Salary by Job Title</h2>
+          <ResponsiveContainer width="100%" height={400}>
+            <BarChart data={salaryByTitle} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis type="number" />
+              <YAxis dataKey="title" type="category" width={200} />
+              <Tooltip formatter={(value) => `₪${value.toLocaleString()}`} />
+              <Bar dataKey="median" fill={PMM_COLORS.secondary} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>Median Salary by PMM Experience</h2>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={salaryByPMMExp}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="experience" />
+                <YAxis />
+                <Tooltip formatter={(value) => `₪${value.toLocaleString()}`} />
+                <Bar dataKey="median" fill={PMM_COLORS.primary} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>Median Salary by Total Experience</h2>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={salaryByTotalExp}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="experience" />
+                <YAxis />
+                <Tooltip formatter={(value) => `₪${value.toLocaleString()}`} />
+                <Bar dataKey="median" fill={PMM_COLORS.secondary} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>Salary Satisfaction by Gender (1-10 scale)</h2>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={salarySatisfaction}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="gender" />
+                <YAxis domain={[0, 10]} />
+                <Tooltip />
+                <Bar dataKey="average" fill={PMM_COLORS.accent} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>Salary Satisfaction vs. Actual Salary</h2>
+            <p className="text-sm mb-4" style={{ color: '#f68f6d' }}>Average satisfaction score by salary range (1-10 scale)</p>
+            <ResponsiveContainer width="100%" height={300}>
+              <ComposedChart data={satisfactionVsSalary}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="salaryRange" angle={-45} textAnchor="end" height={80} />
+                <YAxis domain={[0, 10]} />
+                <Tooltip />
+                <Bar dataKey="avgSatisfaction" fill={PMM_COLORS.secondary} />
+                <Line
+                  type="monotone"
+                  dataKey="avgSatisfaction"
+                  stroke={PMM_COLORS.accent}
+                  strokeWidth={3}
+                  dot={{ fill: PMM_COLORS.accent, r: 5 }}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg p-8 mb-12">
+          <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>Salary vs. Satisfaction Correlation</h2>
+          <p className="text-sm mb-4" style={{ color: '#f68f6d' }}>
+            Each dot represents a PMM. Does higher salary correlate with higher satisfaction?
+          </p>
+          <div className="flex items-center gap-3 mb-6">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: '#ff5353', opacity: 0.6 }}></div>
+              <span className="text-sm" style={{ color: '#d52929' }}>Each dot = 1 PMM professional</span>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={400}>
+            <ScatterChart margin={{ top: 20, right: 20, bottom: 60, left: 60 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis
+                type="number"
+                dataKey="salary"
+                name="Salary"
+                label={{ value: 'Salary (₪K)', position: 'bottom', offset: 40, style: { fill: '#d52929' } }}
+              />
+              <YAxis
+                type="number"
+                dataKey="satisfaction"
+                name="Satisfaction"
+                domain={[0, 10]}
+                label={{ value: 'Satisfaction Score (1-10)', angle: -90, position: 'left', offset: 40, style: { fill: '#d52929' } }}
+              />
+              <Tooltip
+                cursor={{ strokeDasharray: '3 3' }}
+                formatter={(value, name) => {
+                  if (name === 'Salary') return `₪${value}K`;
+                  return value;
+                }}
+              />
+              <Scatter
+                data={salaryVsSatisfactionScatter}
+                fill={PMM_COLORS.primary}
+                fillOpacity={0.6}
+              />
+            </ScatterChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg p-8 mb-12">
+          <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>Top PMM Responsibilities</h2>
+          <div className="space-y-4">
+            {mainResponsibilities.map((item, idx) => (
+              <div key={idx}>
+                <div className="flex justify-between mb-2">
+                  <span className="font-medium" style={{ color: '#d52929' }}>{item.responsibility}</span>
+                  <span className="font-bold" style={{ color: '#ff5353' }}>{item.percentage}%</span>
+                </div>
+                <div className="w-full rounded-full h-3" style={{ backgroundColor: '#ffd3d3' }}>
+                  <div
+                    className="h-3 rounded-full transition-all duration-500"
+                    style={{
+                      width: `${item.percentage}%`,
+                      background: `linear-gradient(to right, ${CHART_COLORS[idx % CHART_COLORS.length]}, ${CHART_COLORS[(idx + 1) % CHART_COLORS.length]})`
+                    }}
+                  ></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg p-8 mb-12">
+          <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>Company Stage Impact Analysis</h2>
+          <p className="text-sm mb-6" style={{ color: '#f68f6d' }}>How company stage correlates with salary and team size</p>
+         
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div>
+              <h3 className="text-lg font-semibold mb-4" style={{ color: '#d52929' }}>Median Salary by Company Stage</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={companyStageAnalysis}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="stage" angle={-45} textAnchor="end" height={100} />
+                  <YAxis />
+                  <Tooltip formatter={(value) => value ? `₪${value.toLocaleString()}` : 'N/A'} />
+                  <Legend />
+                  <Bar dataKey="Product Marketing Manager" fill="#ff5353" name="PMM" />
+                  <Bar dataKey="Senior Product Marketing Manager" fill="#f68f6d" name="Sr. PMM" />
+                  <Bar dataKey="Product Marketing Lead / Team Lead" fill="#ff7b7b" name="Team Lead" />
+                  <Bar dataKey="Director of Product Marketing" fill="#d52929" name="Director" />
+                  <Bar dataKey="VP Marketing / Product Marketing" fill="#ff9999" name="VP" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div>
+              <h3 className="text-lg font-semibold mb-4" style={{ color: '#d52929' }}>Average Team Size by Company Stage</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <ComposedChart data={companyStageAnalysis}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="stage" angle={-45} textAnchor="end" height={100} />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="avgTeamSize" fill={PMM_COLORS.secondary} />
+                  <Line
+                    type="monotone"
+                    dataKey="avgTeamSize"
+                    stroke={PMM_COLORS.accent}
+                    strokeWidth={3}
+                    dot={{ fill: PMM_COLORS.accent, r: 5 }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>PMM Team Size</h2>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={teamSizes}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" type="category" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="value" fill={PMM_COLORS.primary} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>Products Supported per Team</h2>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={productsPerPMM}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="products" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="count" fill={PMM_COLORS.secondary} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="text-center mb-8">
+          <h2 className="text-4xl font-bold" style={{
+            background: 'linear-gradient(135deg, #ff5353 0%, #f68f6d 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text'
+          }}>
+            AI & Automation Insights
+          </h2>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg p-8 mb-12">
+          <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>Top AI Tools Used by PMMs</h2>
+          <div className="space-y-4">
+            {topAITools.map((item, idx) => (
+              <div key={idx}>
+                <div className="flex justify-between mb-2">
+                  <span className="font-medium" style={{ color: '#d52929' }}>{item.tool}</span>
+                  <span className="font-bold" style={{ color: '#ff5353' }}>{item.percentage}%</span>
+                </div>
+                <div className="w-full rounded-full h-3" style={{ backgroundColor: '#ffd3d3' }}>
+                  <div
+                    className="h-3 rounded-full transition-all duration-500"
+                    style={{
+                      width: `${item.percentage}%`,
+                      background: `linear-gradient(to right, ${CHART_COLORS[idx % CHART_COLORS.length]}, ${CHART_COLORS[(idx + 1) % CHART_COLORS.length]})`
+                    }}
+                  ></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>AI Automation Usage</h2>
+            <div className="flex items-center justify-center h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={[
+                      { name: 'Using AI Automation', value: aiAutomation.yes },
+                      { name: 'Not Using', value: aiAutomation.no }
+                    ]}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    <Cell fill={PMM_COLORS.primary} />
+                    <Cell fill="#ffd3d3" />
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-lg p-8">
+            <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>Topics PMMs Want to Master with AI</h2>
+            <div className="space-y-3">
+              {aiTopics.map((item, idx) => (
+                <div key={idx}>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-sm font-medium" style={{ color: '#d52929' }}>{item.topic}</span>
+                    <span className="text-sm font-bold" style={{ color: '#ff5353' }}>{item.percentage}%</span>
+                  </div>
+                  <div className="w-full rounded-full h-2" style={{ backgroundColor: '#ffd3d3' }}>
+                    <div
+                      className="h-2 rounded-full transition-all duration-500"
+                      style={{
+                        width: `${item.percentage}%`,
+                        backgroundColor: CHART_COLORS[idx % CHART_COLORS.length]
+                      }}
+                    ></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="text-center text-sm mt-12" style={{ color: '#d52929' }}>
+          <p>PMM professionals in Israeli Tech • 2025</p>
+        </div>
+
+        <div className="text-center mb-8 mt-16">
+          <h2 className="text-4xl font-bold" style={{
+            background: 'linear-gradient(135deg, #ff5353 0%, #f68f6d 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text'
+          }}>
+            Cross-Analysis Insights
+          </h2>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg p-8 mb-12">
+          <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>Median Salary: Marketing vs Product Department</h2>
+          <p className="text-sm mb-6" style={{ color: '#f68f6d' }}>Salary comparison by job title across departments</p>
+          <ResponsiveContainer width="100%" height={400}>
+            <BarChart data={salaryByDepartment} layout="vertical">
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis type="number" />
+              <YAxis dataKey="title" type="category" width={200} />
+              <Tooltip formatter={(value) => value ? `₪${value.toLocaleString()}` : 'N/A'} />
+              <Legend />
+              <Bar dataKey="Marketing" fill="#ff5353" name="Marketing Dept" />
+              <Bar dataKey="Product" fill="#f68f6d" name="Product Dept" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg p-8 mb-12">
+          <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>AI Tool Adoption by Seniority</h2>
+          <p className="text-sm mb-6" style={{ color: '#f68f6d' }}>Average number of AI tools used by seniority level</p>
+          <ResponsiveContainer width="100%" height={300}>
+            <ComposedChart data={aiToolsBySeniority}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="seniority" angle={-45} textAnchor="end" height={100} />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="avgTools" fill={PMM_COLORS.secondary} />
+              <Line
+                type="monotone"
+                dataKey="avgTools"
+                stroke={PMM_COLORS.accent}
+                strokeWidth={3}
+                dot={{ fill: PMM_COLORS.accent, r: 5 }}
+              />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-lg p-8 mb-12">
+          <h2 className="text-2xl font-bold mb-6" style={{ color: '#d52929' }}>Top PMM Responsibilities by Company Stage</h2>
+          <p className="text-sm mb-6" style={{ color: '#f68f6d' }}>How responsibilities shift across company maturity</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Object.entries(responsibilitiesByStage).map(([stage, responsibilities]) => (
+              <div key={stage} className="border rounded-lg p-4" style={{ borderColor: '#ffd3d3' }}>
+                <h3 className="font-bold text-lg mb-3" style={{ color: '#d52929' }}>{stage}</h3>
+                <div className="space-y-2">
+                  {responsibilities.map((item, idx) => (
+                    <div key={idx} className="flex justify-between text-sm">
+                      <span style={{ color: '#d52929' }}>{item.responsibility}</span>
+                      <span className="font-semibold" style={{ color: '#ff5353' }}>{item.percentage}%</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
